@@ -4,10 +4,11 @@ local unix = require('unix')
 local jrpc = require('jsonrpc')
 local utils = require('utils')
 
-function M:new(port)
+function M:new(port, args)
 	return utils.morph(self, {
 		secret = utils.rndstr(50),
-		port = port
+		port = port,
+		args = args,
 	})
 end
 
@@ -16,7 +17,9 @@ function M:start()
 	if not conf then
 		return nil
 	end
-	local pid, outfd = unix.subprocess('aria2c', { '--conf-path=' .. conf })
+	local args = pl.tablex.deepcopy(self.args)
+	table.insert(args, 1, '--conf-path=' .. conf)
+	local pid, outfd = unix.subprocess('aria2c', args)
 	if not pid then
 		return nil
 	end
@@ -31,7 +34,18 @@ function M:stop()
 end
 
 function M:status()
-	return self:rpc('getGlobalOption')
+	local t = self:rpc('tellActive', {{
+		'completedLength', 'totalLength', 'downloadSpeed', 'connections', 'files'
+	}})
+	if not t then
+		return nil
+	end
+	for _, dl in ipairs(t) do
+		dl.path = dl.files[1].path
+		dl.uri = dl.files[1].uris[1].uri
+		dl.files = nil
+	end
+	return t
 end
 
 function M:output()
